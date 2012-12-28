@@ -8,7 +8,7 @@ Jadi ini sekrip untuk ngecek secara massal ataupun single apakah username twitte
 
 ### Requirements:
   * php > 5
-  * phpCURL lib
+  * koneksi internet yang memadai :D
 
 ## License:
 MIT License:
