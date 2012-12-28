@@ -12,7 +12,7 @@ dengan skrip yang mau dijalankan. nanti saya tambahin kalo ada apa-apanya :D
 ## License:
 MIT License:
 
-  Copyright (c) <2012> Widnyana Putra <widnyana.p [at] gmail.com>
+  	Copyright (c) <2012> Widnyana Putra <widnyana.p [at] gmail.com>
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of this
 	software and associated documentation files (the "Software"), to deal in the Software
