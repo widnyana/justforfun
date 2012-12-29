@@ -8,6 +8,7 @@ Jadi ini sekrip untuk ngecek secara massal ataupun single apakah username twitte
 
 ### Requirements:
   * php > 5
+  * lib phpjson *kalau belum ada* (http://php.net/manual/en/json.setup.php)
   * koneksi internet yang memadai :D
 
 ## License:
