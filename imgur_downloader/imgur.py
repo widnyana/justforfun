@@ -2,8 +2,10 @@
 # imgur downloader.
 
 
-import re, urllib, urllib2, os
+import re, urllib, os
 from time import gmtime, strftime
+from urllib2 import *
+
 
 def main():
     chan = raw_input("Imgur Channel: ").strip()
@@ -18,7 +20,7 @@ def main():
 
     print "Extracting %s" % url
 
-    html_page       = urllib2.urlopen(url)
+    html_page       = urlopen(url)
     html_source     = html_page.readlines()
     html_page.close()
     for line in html_source:
@@ -30,7 +32,13 @@ def main():
             name = "%s" %(match.group()[14:-1])
             print "Downloading %s..." %(target)
             saveto = "%s/%s" % (folder, name)
-            urllib.urlretrieve(target, saveto)
+
+            reqObj  = Request(target)
+            fileObj = urlopen(reqObj)
+
+            localFile   = open(saveto, "wb")
+            localFile.write(fileObj.read())
+            localFile.close()
 
 if __name__ == '__main__':
     main()
