@@ -10,4 +10,4 @@ ga ada yg sepesial, yg sepesial itu martabak pakai telur 2
 
 ~$ python grabber.py
 
-~$ # profit :D
+~$ ## profit :D
