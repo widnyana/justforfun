@@ -7,7 +7,6 @@ print "
  * released under ycl forum license 2012
  * coded by noisegate
  *
- * kalo lu aku akuin sorskod ini, gw sumpahin titit lu buntung
  ***************************************************************\n";
 $used = 0;
 $avail = 0;
