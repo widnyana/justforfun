@@ -27,10 +27,6 @@ def encrypt(arg0, pwd):
     return str(txt_ret)
 
 
-def split(str, num):
-    return [str[start:start + num] for start in range(0, len(str), num)]
-
-
 def clean_leading_zero(string):
     clean = True
     while clean:
