@@ -1,6 +1,7 @@
 def decrypt(arg0, pwd):
-    haystack = split(arg0, 3)
-    haystack = [int(clean_leading_zero(x)) for x in haystack]
+    enc = 3
+    haystack = [int(clean_leading_zero(x)) for x in [arg0[start:start + enc] for start in
+                                                     range(0, len(arg0), enc)]]
     length = len(haystack)
     txt_ret = ""
     num = 0
