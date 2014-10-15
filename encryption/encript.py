@@ -6,7 +6,7 @@ def decrypt(arg0, pwd):
     txt_ret = ""
     num = 0
     for i in haystack:
-        dek = i - num
+        dek = i - num - pwd
         txt_ret += chr(dek)
         num += 1
     return txt_ret
