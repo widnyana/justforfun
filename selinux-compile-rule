@@ -1,0 +1,13 @@
+#!/bin/bash
+
+MODULE_NAME=$1
+if [ -z "$MODULE_NAME" ]; then
+  echo "expecting module name in current directory, none found"
+  exit 1
+fi
+
+
+checkmodule -M -m -o ${MODULE_NAME}.mod ${MODULE_NAME}.te
+semodule_package -o ${MODULE_NAME}.pp -m ${MODULE_NAME}.mod
+rm -f ${MODULE_NAME}.mod
+echo "done"
