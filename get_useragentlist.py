@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import json
 import requests
 from lxml import html
 
@@ -16,4 +16,7 @@ def fetch_url():
 
 if __name__ == '__main__':
     ua = fetch_url()
-    print "UserAgent string found: ", len(ua)
+    print (f"UserAgent string found: {len(ua)}")
+    
+    with open("ua_1.json", "w") as f:
+        f.write(json.dumps(ua))
