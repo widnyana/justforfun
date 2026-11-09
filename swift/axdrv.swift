@@ -473,6 +473,17 @@ func printNodes(_ nodes: [Node], json: Bool, target: Target) {
 // MARK: - Main
 
 let options = parseArguments()
+
+// Listing apps needs no target and no accessibility trust.
+if options.command == "apps" {
+    for app in runningApps().sorted(by: { ($0.localizedName ?? "") < ($1.localizedName ?? "") }) {
+        print(
+            "\(app.processIdentifier)\t\(app.bundleIdentifier ?? "?")\t"
+                + "\(app.localizedName ?? "?")\t\(app.isActive ? "active" : "")")
+    }
+    exit(0)
+}
+
 let target = resolveTarget(options)
 
 guard AXIsProcessTrusted() else {
@@ -484,13 +495,6 @@ let selector = Selector(options.operands)
 let nodes = snapshot(target, depthLimit: options.depth)
 
 switch options.command {
-case "apps":
-    for app in runningApps().sorted(by: { ($0.localizedName ?? "") < ($1.localizedName ?? "") }) {
-        print(
-            "\(app.processIdentifier)\t\(app.bundleIdentifier ?? "?")\t"
-                + "\(app.localizedName ?? "?")\t\(app.isActive ? "active" : "")")
-    }
-
 case "windows":
     let list =
         CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
