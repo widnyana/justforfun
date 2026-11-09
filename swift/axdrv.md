@@ -1,157 +1,314 @@
 # axdrv
 
-Accessibility-driven UI driver for a running macOS app. One file, no
-dependencies beyond the system SDK: `AppKit` + `ApplicationServices`.
+A one-file macOS UI driver that addresses controls through the accessibility tree instead
+of screen coordinates. No dependencies beyond the system SDK (`AppKit`,
+`ApplicationServices`), no hardcoded bundle id, no project integration.
 
-## Purpose
-
-Tests and automation for a desktop app are usually brittle: they click at
-recorded pixel coordinates that break on any layout change. `axdrv` takes a
-different path. It walks the app's accessibility tree and lets you address
-controls the way assistive technology does, by role, `AXIdentifier`, title, or
-value. A test asserts on what the app exposes and presses controls by name.
-
-## When to use it
-
-- Writing or debugging an automated UI test for the app: press and assert by
-  id/text so the test survives layout changes.
-- Inspecting what a running instance actually exposes (`dump`, `texts`)
-  without recompiling the app.
-- Exercising a real user interaction path (`click*`, `select`) end to end,
-  including controls that do not respond to `AXPress`.
-- Picking between several concurrently running builds of the app via
-  `AXDRV_PID`.
-
-Not the right tool for: logic-level tests (call the code directly), headless
-CI (AX needs a logged-in GUI session and Accessibility trust), or driving
-other apps without passing `AXDRV_PID` or changing the hardcoded bundle id.
-
-## Build
-
-```sh
-swiftc -O swift/axdrv.swift -o /tmp/axdrv
+```
+axdrv apps                      # find the pid
+axdrv --pid 4321 dump --json    # capture the tree
+axdrv --pid 4321 press id=note.new
+axdrv --pid 4321 type "Meeting notes"
+axdrv --pid 4321 texts "Meeting notes"
 ```
 
-## Requirements
+## Why not coordinates
 
-1. Accessibility trust. The process that runs `axdrv` (your terminal, or a
-   test runner) needs permission in System Settings > Privacy & Security >
-   Accessibility. Without it the tool prints `AX NOT TRUSTED` and exits 3.
-2. The target app is running. By default it looks for the first instance with
-   bundle id `id.web.widnyana.chet`. Not running: prints `chet not running`,
-   exits 4.
+A coordinate click encodes one layout at one window size on one display. It breaks when a
+toolbar moves, a sidebar collapses, a row is added, or the window opens on another Space.
+An accessibility selector addresses what the control is, not where it is drawn.
 
-### Target selection: `AXDRV_PID`
+## Accessibility tree vs the DOM
 
-More than one build of the app can be running at the same time (for example a
-`.build/xc` copy next to another build). By bundle id alone it is ambiguous.
-Set `AXDRV_PID` to the process id of the instance you want to drive:
+The mental model transfers, the details do not.
 
-```sh
-AXDRV_PID=12345 /tmp/axdrv dump
+| Web DOM | macOS accessibility tree |
+|---|---|
+| One document per page | One tree per application, split across its windows |
+| `id="save"` | `AXIdentifier` (`id=save`) |
+| Element tag, `role` | `AXRole` (`role=AXButton`) |
+| `aria-label`, visible text | `AXDescription` (accessible label), `AXTitle`, `AXValue` |
+| CSS classes | No equivalent. There is nothing to style-query |
+| `querySelector`, XPath | Walk the tree and filter attributes. This tool does that |
+| `element.click()` | `AXPress` action, or a synthesized mouse click |
+| `element.disabled` | `AXEnabled` plus the element's action list |
+| DevTools Elements panel | `axdrv dump --json` |
+| `element.focus()`, `KeyboardEvent` | `AXFocused` for reads; typing and key events go through `CGEvent` |
+| Same tree for every browser | Each app owns its tree; quality depends on the app and framework |
+| Inspect any website without changes | The app must expose accessibility attributes. Most native controls do; custom-drawn views may expose nothing |
+
+The tree is not a document. There is no CSS selector engine, no class names, and no stable
+DOM path. What replaces them is a small set of attributes plus the actions each element
+declares. Selector design is therefore an application design concern, not a test-only hack.
+
+## Designing selectors
+
+Prefer, in this order:
+
+1. **Identifier.** `id=note.new`. Stable across languages and layout. Set by the app
+   developer.
+2. **Role plus accessible label.** `role=AXButton desc=Back`. Works when the app exposes a
+   meaningful label. Localized, so a test suite that runs in several languages needs ids.
+3. **Role plus title.** `role=AXButton title=Settings…`. Common in AppKit; also localized.
+4. **Bare substring.** `dump "Save"` or `press "Save"`. A discovery aid and a last resort. It
+   matches across id, description, title, and value, so it goes stale with copy changes.
+
+Never select by coordinate, ordinal position, or a label that contains changing data
+(`3 items selected`, `Remove Acme`, a file name). Never put an identifier on a wrapper that
+contains other controls: SwiftUI propagates the wrapper's identifier down and overwrites the
+identifiers of its children. Put it on the control that is pressed.
+
+Name identifiers `screen.element` in lowercase, for example `sidebar.library`,
+`note.new`, `editor.title`, `dialog.cancel`. Keep them stable across releases; tests and
+automation are allowed to depend on them.
+
+Add them in code:
+
+```swift
+// SwiftUI
+Button("New note") { create() }
+    .accessibilityIdentifier("note.new")
+    .accessibilityLabel("New note")
+
+// AppKit
+button.setAccessibilityIdentifier("note.new")
+button.setAccessibilityLabel("New note")
+
+// Custom NSView: role and label must be declared, or the view is invisible to AX
+setAccessibilityElement(true)
+setAccessibilityRole(.button)
+setAccessibilityLabel("New note")
+setAccessibilityIdentifier("note.new")
 ```
 
-`AXDRV_PID` wins over the bundle-id lookup; without it, the first instance
-found by bundle id is used.
+Roles follow the control, not the identifier:
+
+| SwiftUI control | AX role |
+|---|---|
+| `Button` | `AXButton` |
+| Link-style button | `AXLink` |
+| `Toggle` switch or checkbox | `AXCheckBox` |
+| `Picker` menu | `AXPopUpButton` |
+| Segmented `Picker` | `AXRadioGroup` with `AXRadioButton` children |
+| `Slider` | `AXSlider` |
+| `TextField`, `.searchable` | `AXTextField` |
+| Sidebar `List` | `AXOutline` > `AXRow` > `AXCell` |
+| Sheet | `AXSheet` |
+
+## Build and permissions
+
+```sh
+swiftc -O axdrv.swift -o /tmp/axdrv
+```
+
+1. The process that runs `axdrv` needs Accessibility permission in System Settings >
+   Privacy & Security > Accessibility. Without it the tool prints `AX NOT TRUSTED` and exits
+   3. The permission belongs to the caller, not to the target app.
+2. A logged-in GUI session is required. This is not a headless CI tool; run it on a runner
+   with a real desktop session and the permission granted.
+3. The target app must be running.
+
+## Choosing the target
+
+- `--pid <pid>`: exact process. Use this when more than one copy of the app runs, or when a
+  menu click could otherwise hit the wrong instance.
+- `--app <bundle id|name>`: first running regular app matching the bundle id, then the name.
+- Neither: the frontmost app.
+
+`axdrv apps` lists running regular apps with pid, bundle id, name, and the active marker.
 
 ## Commands
 
-    axdrv dump|texts|press <id>|select <row id>|click <text>|clickid <id>|clicktitle <title>|frame <id>
+```
+axdrv [--pid <pid>|--app <name|bundle>] [--json] [--all] [--depth <n>] <command> [operand]
+```
 
-All commands snapshot the accessibility tree once at startup and then match
-against that snapshot.
+| Command | Operand | Result |
+|---|---|---|
+| `apps` | - | pid, bundle, name, active for every regular app |
+| `windows` | - | window id, title, and screen bounds for the target |
+| `activate` | - | brings the target app forward |
+| `dump` | optional selector | accessibility nodes, filtered to actionable or named elements by default |
+| `dump --all` | optional selector | every node in every window |
+| `dump --json` | optional selector | one JSON document with the target and all nodes |
+| `texts` | optional selector | values of `AXStaticText` nodes, one per line |
+| `press` | selector | performs `AXPress` on exactly one match |
+| `select` | selector | sets `AXSelectedRows` on the outline row containing one match |
+| `click` | selector | synthesized mouse click at the center of one match |
+| `frame` | selector | prints `x,y,w,h` in global screen points |
+| `type` | text | activates the app and types the text |
+| `key` | keycode and modifiers | activates the app and presses a key |
 
-| Command | Argument | What it does | Exit cases |
-|---|---|---|---|
-| `dump` | - | Prints every element that has a non-empty identifier, title, or value, as `role id=... title=... value=...`. The discovery view: run this first to learn what ids exist. | - |
-| `texts` | - | Prints the value of every `AXStaticText` element, one per line, in tree order. For asserting visible screen text. | - |
-| `press` | element id | Finds the element whose `AXIdentifier` equals the id and performs the AX press action (`kAXPressAction`) on it. Fires the control's own action handler. | `press failed` on AX error, `no element with id <id>` if not found |
-| `select` | row id | Finds the `AXOutline`, walks its rows, and selects the `AXRow` that contains an element with the given `AXIdentifier`, by setting `AXSelectedRows` on the outline. | `no selectable row with id <id>` and exit 4 if not found |
-| `click` | text | Finds the element whose `AXValue` equals the given text and synthesizes a real mouse click at its center. | `click failed` if no geometry, `no element with value <text>` if not found |
-| `clickid` | element id | Same synthesized click as `click`, matched by `AXIdentifier`. | same as `click` |
-| `clicktitle` | title | Same synthesized click as `click`, matched by `AXTitle`. Use this for elements without a stable identifier. | same as `click` |
-| `frame` | element id | Prints the screen-frame of the element with the given id: `x= y= w= h=` in global screen coordinates (top-left origin). For tests that need geometry, e.g. drags. | `no framed element <id>` if not found or no geometry |
+`--depth` caps the tree walk (default 60). `--json` and `--all` apply to `dump`.
 
-## How it works
+### Selector syntax
 
-### Snapshot construction
+Terms are `key=value`, ANDed:
 
-`all(_:)` does an iterative depth-first walk from the application root
-(`AXUIElementCreateApplication(pid)`), pushing children with a depth counter
-and popping the last element first. The depth counter caps recursion at 40
-levels: the tree is finite and hostile apps (or bugs in the app's own AX
-implementation) can produce deep or cyclic structures; the cap bounds the walk
-instead of hanging. The result is a flat array; every command matches against
-it with `first(where:)` or a `where` filter.
+```
+id=note.new
+role=AXButton desc=Back
+role=AXButton enabled=true
+title=Settings…
+value=3 items selected
+```
 
-Order is DFS-with-a-stack, so siblings end up in reverse discovery order and
-children are interleaved with parents. For `dump` and `texts` the exact order
-rarely matters; for `press`/`click` matching it matters only if two elements
-share an identifier, in which case the last-visited match wins (the flat array
-is searched front to back, and back-to-front tree order means the earliest
-tree element is last). In practice ids in the target app are unique, so this
-is a non-issue, but it is worth knowing before you rely on "first match".
+Keys: `id`, `role`, `desc` (`description`), `title`, `value`, `enabled` (true or false).
+A term without `=` is a case-insensitive substring match over id, description, title, and
+value. Quote operands that contain spaces.
 
-### Attribute helpers
+Exactly one match is required for `press`, `click`, `frame`, and `select`. Zero matches exits
+5. Several matches exits 6 and prints the candidates, so a selector cannot silently act on
+the wrong element. `dump` and `texts` accept an optional selector and filter.
 
-- `attr(_:_:)` wraps `AXUIElementCopyAttributeValue` and returns nil on any AX
-  error. Every lookup failure collapses to nil/empty rather than throwing.
-- `str(_:_:)` is `attr` plus `as? String`, returning `""` for anything that is
-  not a string. Used for role, title, value, identifier reads.
-- `point(_:_:)` reads an AX value and decodes it as `CGPoint` via
-  `AXValueGetValue(_:.cgPoint:)`, guarding the CF type first. Used for
-  `kAXPositionAttribute`.
-- `size(_:)` does the same for `kAXSizeAttribute` into a `CGSize`.
-- `kids(_:)` reads `kAXChildrenAttribute` as `[AXUIElement]`.
+Tokens in selectors are not shell expressions. There are no `#`, `.`, `[attr]`, combinators,
+or wildcards. This is deliberate: the attribute set is small, and `id`/`role`/`desc` cover
+what native apps expose.
 
-### The two ways of pressing
+### JSON shape
 
-`press` and `click*` are deliberately different mechanisms:
+```json
+{
+  "target": { "pid": 4321, "name": "Example", "bundle": "com.example.app" },
+  "nodes": [
+    {
+      "role": "AXButton",
+      "window": "Library",
+      "depth": 3,
+      "id": "note.new",
+      "description": "New note",
+      "enabled": true,
+      "actions": ["AXPress"],
+      "x": 812, "y": 52, "width": 28, "height": 22
+    }
+  ]
+}
+```
 
-- `press` calls `AXUIElementPerformAction(hit, kAXPressAction)`. No mouse
-  movement, no focus change, no window activation. The control's own action
-  selector runs. This is the clean path, but it only works for controls that
-  expose a press action.
-- `click*` synthesizes real HID-level mouse events. It reads the element's
-  position and size, computes the center point, posts `leftMouseDown`, sleeps
-  30 ms, then posts `leftMouseUp` at the HID event tap
-  (`CGEvent.post(tap: .cghidEventTap)`). This works for anything that reacts
-  to a genuine click, including controls that ignore AX press actions, and it
-  exercises the same code path a human finger would. Cost: it moves the
-  pointer, requires the window to be visible and not occluded at that point,
-  and whatever is under the cursor gets clicked.
+Store one file per screen. Diff it after a UI change to see which selectors disappeared or
+moved. Positions are useful for `click` and for screenshots; identifiers are what tests should
+assert on.
 
-Rule of thumb: `press` when an identifier exists and a press action is
-supported, `click*` (or `select` for outline rows) otherwise.
+## A real scenario, anonymized
 
-### `select` details
+A native note-taking app has a sidebar, a list, an editor, and a toolbar. Some controls have
+identifiers, some only labels.
 
-Outline rows are not always children of the outline in one hop; `select` walks
-the full subtree of every `AXOutline` looking for an `AXRow` whose descendants
-contain the target identifier. Selection is applied by setting
-`AXSelectedRows` to a one-element array on the outline itself, which is how
-multi-select-capable outlines are meant to be driven. It exits 0 on success
-even if the AX set call failed, but prints `select failed` in that case.
+1. **Find the instance.**
+
+   ```sh
+   axdrv apps | grep -i notes
+   # 4321  com.example.notes  Example Notes  active
+   ```
+
+2. **Capture the tree before touching anything.**
+
+   ```sh
+   axdrv --pid 4321 dump --json > /tmp/notes-tree.json
+   jq -r '.nodes[] | select(.id or .description) | [.role, .id, .description] | @tsv' \
+     /tmp/notes-tree.json | sort -u
+   ```
+
+   The output shows `id=note.new`, `id=sidebar.library`, `id=editor.title`, and a toolbar
+   button with only `description: Share`. The share button needs an identifier before the test
+   can rely on it.
+
+3. **Add the missing selector in the app.**
+
+   ```swift
+   Button(action: share) { Image(systemName: "square.and.arrow.up") }
+       .accessibilityIdentifier("toolbar.share")
+       .accessibilityLabel("Share note")
+   ```
+
+   Rebuild, relaunch, and capture again. Confirm the new id appears.
+
+4. **Drive the flow and assert state, not pixels.**
+
+   ```sh
+   axdrv --pid 4321 press id=note.new
+   axdrv --pid 4321 type "Meeting notes"
+   axdrv --pid 4321 texts "Meeting notes"        # prints the line if the editor exposes it
+   axdrv --pid 4321 press id=toolbar.share
+   axdrv --pid 4321 dump id=dialog.share --json  # inspect the sheet
+   axdrv --pid 4321 press id=dialog.cancel
+   axdrv --pid 4321 select id=sidebar.library    # outline row, not a press
+   ```
+
+   If `texts` does not expose the editor content, the editor is custom-drawn; assert on a
+   saved state or on an element that does expose the title, rather than falling back to
+   coordinates.
+
+5. **Check a disabled control before pressing it.**
+
+   ```sh
+   axdrv --pid 4321 dump id=note.save
+   # AXButton ... id=note.save enabled=false actions=AXPress
+   ```
+
+   `AXPress` on a disabled element can report success and do nothing. Assert `enabled=true`
+   first, or watch the resulting state.
+
+6. **Capture the window for a human review.**
+
+   ```sh
+   axdrv --pid 4321 windows
+   # 98765  Notes  0,0 1440x900
+   screencapture -x -l 98765 /tmp/notes.png
+   ```
+
+   Window ids come from CoreGraphics; capturing by id does not depend on what is on top.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| 0 | Success (or the command printed its result) |
-| 2 | Usage error: no command argument, or unknown command |
-| 3 | Accessibility not trusted for this process |
-| 4 | Target app not running / target not found (`select` miss) |
+| 0 | Command ran. `press`, `click`, `select` print their own result; read the text |
+| 2 | Usage error |
+| 3 | Accessibility is not trusted for the calling process |
+| 4 | Target app or pid not found |
+| 5 | Selector matched nothing, or an element has no frame |
+| 6 | Selector matched more than one element |
 
-## Notes and caveats
+`press failed` is printed with exit 0 because the AX action returned an error. Treat the text
+as the result, or wrap the call and check for `failed`.
 
-- The tree snapshot is taken once per invocation. If the app's UI changes
-  after the snapshot, a second `axdrv` call sees the new state; a single call
-  does not re-walk.
-- `frame` coordinates are global screen coordinates (macOS top-left origin),
-  same space the CGEvent click uses, so `frame` output and `click*` targeting
-  agree.
-- `usleep(30_000)` between mouse down and up is a deliberate human-ish pause;
-  some controls ignore a zero-delay click.
-- The app target (`id.web.widnyana.chet`) is hardcoded in this file. If you
-  reuse `axdrv` for another app, change that one string or always pass
-  `AXDRV_PID`.
+## Pitfalls
+
+- **Disabled elements accept `AXPress`.** The AX call returns success; the control does
+  nothing. Read `enabled` from `dump` and assert it.
+- **`AXPress` is not a click.** It invokes the control's action. Some controls expose no press
+  action, ignore synthesized presses, or need real focus. `click` posts HID events and needs
+  the window visible and unoccluded at that point. `select` is the only correct way to move
+  an outline selection.
+- **Wrapper identifiers replace child identifiers.** In SwiftUI an identifier on a container
+  propagates down. Put it on the control.
+- **Rows are not buttons.** A sidebar or table row is `AXRow` under `AXOutline`. It has no
+  press action; set `AXSelectedRows`.
+- **Menus are excluded from the tree.** Use `key` for shortcuts. Pressing a menu item without
+  opening its menu usually does nothing, and menu clicks by process name can hit another
+  instance.
+- **The snapshot is taken once per invocation.** After an action changes the UI, run a new
+  `axdrv` call. A single call does not re-walk.
+- **Multiple instances are common.** A test build, a release build, and a user's copy can all
+  run. Always pass `--pid` in automation.
+- **Labels are localized and dynamic.** Titles and descriptions change with language, counts,
+  and file names. Identifiers do not.
+- **Custom drawing may expose nothing.** A canvas, a Metal view, or a web view can be opaque
+  to AX. That is an app accessibility gap, not something a driver can work around.
+- **`type` and `key` activate the app and send events to whatever has focus.** Click or press
+  the field first; do not assume focus.
+- **Coordinates are global screen points, top-left origin.** They match `CGEvent` and
+  `screencapture`, not a window-relative space.
+- **`--all` is large.** Use a selector or the default actionable filter unless the full tree
+  is the point.
+- **Retina does not change coordinates.** AX frames and mouse events are in points. Screenshot
+  pixels are not.
+- **TCC prompts appear once per caller.** A headless runner without a GUI session and the
+  permission cannot use the tool.
+
+## Limits
+
+`axdrv` is an observation and input tool, not a test framework. It does not wait for
+conditions, retry, or assert. A test script composes those around it: poll `dump` for a
+selector, assert on `texts` or `enabled`, and use the exit codes to fail fast.

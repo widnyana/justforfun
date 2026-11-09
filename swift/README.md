@@ -1,50 +1,36 @@
-# switft
+# swift helpers
 
-macOS UI-driving helpers written in Swift. The directory name is an intentional
-misspelling of "swift"; it holds throwaway-but-working Swift scripts that drive a
-running macOS app for testing purposes.
+Throwaway-but-working Swift scripts for driving a running macOS app from a terminal or a
+test script. The directory name is an intentional misspelling.
 
-## Why `axdrv.swift` exists
+## axdrv
 
-`axdrv.swift` is a standalone command-line driver built on the macOS
-Accessibility (AX) API. It reads the accessibility tree of a running
-application so an automated test (or a human in a terminal) can find and
-operate on controls by their `AXIdentifier` or title, instead of guessing
-pixel coordinates or recording brittle mouse scripts.
+`axdrv.swift` is a standalone command-line driver built on the macOS Accessibility (AX)
+API. It reads the accessibility tree of a running app so a human or a test can address
+controls by what they are, not where they are drawn.
 
-Concretely, it exists to answer these questions from a shell:
+What it answers from a shell:
 
-- What controls and text does the running app currently show? (`dump`, `texts`)
-- Can I press this button / click this control by name? (`press`, `click`, `clickid`, `clicktitle`)
-- Can I select a row in a list by identifier? (`select`)
-- Where exactly is this control on screen? (`frame`)
+- Which controls and text does the running app expose? (`dump`, `texts`, `dump --json`)
+- Can I press or click this control by identifier or label? (`press`, `click`)
+- Can I move a list or sidebar selection? (`select`)
+- Where is this control on screen? (`frame`)
+- Which process or window am I looking at? (`apps`, `windows`, `--pid`)
 
-It is a single-file, zero-dependency Swift program: `AppKit` and
-`ApplicationServices` only. Build it with the system `swiftc`:
+It is one file with no dependencies beyond `AppKit` and `ApplicationServices`:
 
 ```sh
 swiftc -O swift/axdrv.swift -o /tmp/axdrv
+/tmp/axdrv apps
+/tmp/axdrv --pid 4321 dump
 ```
 
-It needs Accessibility permission (System Settings > Privacy & Security >
-Accessibility) granted to whatever terminal or process runs it. It targets the
-app with bundle id `id.web.widnyana.chet` by default; set `AXDRV_PID` to point
-it at a specific running instance.
+The caller needs Accessibility permission in System Settings > Privacy & Security >
+Accessibility. The target app must be running in a logged-in GUI session.
 
-## When to use `axdrv.swift`
+Target selection is `--pid`, `--app <bundle id or name>`, or the frontmost app. Selectors are
+`key=value` terms (`id=note.new`, `role=AXButton desc=Back`, `enabled=true`), and a selector
+must match exactly one element before it can act.
 
-- You are writing an automated UI test or script for `chet` and want to press
-  or assert on controls by id/text instead of pixel coordinates. Pixel
-  scripts break on any layout change; AX identifiers survive layout changes.
-- You are iterating on the app and want a quick terminal view of what the UI
-  currently exposes (`dump`, `texts`) without adding logging to the app.
-- You need to simulate a real user interaction end to end (`click*`,
-  `select`), the same event path a human produces, while a build of the app
-  is running.
-
-When not to use it: unit-level logic tests (run the logic directly), CI
-headless environments (the AX API needs a logged-in GUI session plus
-Accessibility trust), and driving apps other than `chet` without editing the
-hardcoded bundle id or passing `AXDRV_PID`.
-
-Full command reference and internals: see [`axdrv.md`](axdrv.md).
+Full command reference, selector design, DOM comparison, JSON shape, an anonymized walkthrough,
+and the pitfalls: see [`axdrv.md`](axdrv.md).
