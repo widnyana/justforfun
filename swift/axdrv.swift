@@ -1,5 +1,9 @@
-// axdrv: drive a running macOS app through its accessibility tree instead of pixel
-// coordinates. Standalone tool: no project dependency and no hardcoded bundle id.
+// ─────────────────────────────────────────────────────────────────────────────
+// Damarseta · Infrastructure with Intent. Aligned. Reliable.
+// Copyright (c) 2026 wid@damarseta.id · https://damarseta.id
+// ─────────────────────────────────────────────────────────────────────────────
+// Context: swift
+// Purpose: Drive a running macOS app through its accessibility tree
 //
 // Build:  swiftc -O axdrv.swift -o /tmp/axdrv
 // Help:   /tmp/axdrv help
