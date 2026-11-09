@@ -4,6 +4,12 @@ A one-file macOS UI driver that addresses controls through the accessibility tre
 of screen coordinates. No dependencies beyond the system SDK (`AppKit`,
 `ApplicationServices`), no hardcoded bundle id, no project integration.
 
+The tool is written in Swift; the apps it drives do not have to be. `axdrv` talks to the
+macOS Accessibility API, which is language-agnostic: it works on any running macOS process
+that exposes AX attributes, including AppKit, SwiftUI, Electron and web-view apps, Qt, and
+Java apps. Custom-drawn views can expose nothing; that is an accessibility gap in the
+target app, not a language limit.
+
 ```
 axdrv apps                      # find the pid
 axdrv --pid 4321 dump --json    # capture the tree

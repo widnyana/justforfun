@@ -9,6 +9,11 @@ test script. The directory name is an intentional misspelling.
 API. It reads the accessibility tree of a running app so a human or a test can address
 controls by what they are, not where they are drawn.
 
+The tool itself is written in Swift, but it is not limited to Swift apps. It drives any
+running macOS process: AppKit, SwiftUI, Electron, Qt, Java, anything that exposes the
+macOS accessibility tree. The limit is what the target app exposes through AX, not the
+language it was built with.
+
 What it answers from a shell:
 
 - Which controls and text does the running app expose? (`dump`, `texts`, `dump --json`)
