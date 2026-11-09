@@ -115,7 +115,8 @@ swiftc -O axdrv.swift -o /tmp/axdrv
 - `--app <bundle id|name>`: first running regular app matching the bundle id, then the name.
 - Neither: the frontmost app.
 
-`axdrv apps` lists running regular apps with pid, bundle id, name, and the active marker.
+`axdrv apps` lists running regular apps with pid, bundle id, name, and the active marker. It
+needs no target and no Accessibility trust, so it is the first command in a session.
 
 ## Commands
 
@@ -125,7 +126,7 @@ axdrv [--pid <pid>|--app <name|bundle>] [--json] [--all] [--depth <n>] <command>
 
 | Command | Operand | Result |
 |---|---|---|
-| `apps` | - | pid, bundle, name, active for every regular app |
+| `apps` | - | pid, bundle, name, active for every regular app. No target or trust needed |
 | `windows` | - | window id, title, and screen bounds for the target |
 | `activate` | - | brings the target app forward |
 | `dump` | optional selector | accessibility nodes, filtered to actionable or named elements by default |
