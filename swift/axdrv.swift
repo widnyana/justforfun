@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Damarseta · Infrastructure with Intent. Aligned. Reliable.
+// Damarseta · Infrastructure with Intent. · Aligned. Reliable.
 // Copyright (c) 2026 wid@damarseta.id · https://damarseta.id
 // ─────────────────────────────────────────────────────────────────────────────
 // Context: swift
