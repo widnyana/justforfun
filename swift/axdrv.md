@@ -29,7 +29,7 @@ other apps without passing `AXDRV_PID` or changing the hardcoded bundle id.
 ## Build
 
 ```sh
-swiftc -O switft/axdrv.swift -o /tmp/axdrv
+swiftc -O swift/axdrv.swift -o /tmp/axdrv
 ```
 
 ## Requirements

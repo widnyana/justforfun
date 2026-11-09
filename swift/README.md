@@ -23,7 +23,7 @@ It is a single-file, zero-dependency Swift program: `AppKit` and
 `ApplicationServices` only. Build it with the system `swiftc`:
 
 ```sh
-swiftc -O switft/axdrv.swift -o /tmp/axdrv
+swiftc -O swift/axdrv.swift -o /tmp/axdrv
 ```
 
 It needs Accessibility permission (System Settings > Privacy & Security >
