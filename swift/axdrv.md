@@ -119,7 +119,8 @@ swiftc -O axdrv.swift -o /tmp/axdrv
 - `--pid <pid>`: exact process. Use this when more than one copy of the app runs, or when a
   menu click could otherwise hit the wrong instance.
 - `--app <bundle id|name>`: first running regular app matching the bundle id, then the name.
-- Neither: the frontmost app.
+- Neither: the pid in `AXDRV_PID` when set (backward compatibility with the older Chet
+  driver), else the frontmost app.
 
 `axdrv apps` lists running regular apps with pid, bundle id, name, and the active marker. It
 needs no target and no Accessibility trust, so it is the first command in a session.
@@ -127,8 +128,14 @@ needs no target and no Accessibility trust, so it is the first command in a sess
 ## Commands
 
 ```
-axdrv [--pid <pid>|--app <name|bundle>] [--json] [--all] [--depth <n>] <command> [operand]
+axdrv [--pid <pid>|--app <name|bundle>] [--json] [--all] [--depth <n>]
+      [--timeout <seconds>] [--max-nodes <n>] <command> [operand]
 ```
+
+- `--timeout <s>`: per-call accessibility timeout, default 1.5. Raise it for a busy or
+  hung app whose tree walk would otherwise return early with partial results.
+- `--max-nodes <n>`: stop walking after n nodes, default 20000. The walk prints
+  `truncated at N nodes` on stderr when it fires.
 
 | Command | Operand | Result |
 |---|---|---|
@@ -143,10 +150,35 @@ axdrv [--pid <pid>|--app <name|bundle>] [--json] [--all] [--depth <n>] <command>
 | `select` | selector | sets `AXSelectedRows` on the outline row containing one match |
 | `click` | selector | synthesized mouse click at the center of one match |
 | `frame` | selector | prints `x,y,w,h` in global screen points |
+| `color` | selector, or `--at x,y` | samples the rendered pixels of one element, or of one screen point |
 | `type` | text | activates the app and types the text |
 | `key` | keycode and modifiers | activates the app and presses a key |
 
 `--depth` caps the tree walk (default 60). `--json` and `--all` apply to `dump`.
+
+### Color sampling
+
+The accessibility API has no color attribute, so `color` samples a window capture instead.
+With a selector it reports the element's frame, its most common pixel (the background), the
+strongest minority pixel (the ink), and the WCAG contrast between them. With `--at x,y` it
+samples one raw screen point, bypassing the selector.
+
+```sh
+axdrv --pid 4321 color id=note.title
+# label frame background ink contrast peak colors
+
+axdrv --pid 4321 color --at 820,60
+# 820,60  #1E1E1E   (one pixel)
+```
+
+`--at x,y` takes raw screen points. The point must land inside one of the target app's
+on-screen windows. The selector form resolves the element, finds the on-screen window
+containing its center, and converts the AX frame (points) into capture pixels using the
+Retina scale.
+
+It needs Screen Recording permission for the terminal, in addition to Accessibility. It
+samples what is on screen now: a transient state (a selection, a hover) is only valid while
+it is on screen. Use it to assert on paper/ink tokens and contrast; use `dump` for state.
 
 ### Selector syntax
 
@@ -273,7 +305,7 @@ identifiers, some only labels.
 | 0 | Command ran. `press`, `click`, `select` print their own result; read the text |
 | 2 | Usage error |
 | 3 | Accessibility is not trusted for the calling process |
-| 4 | Target app or pid not found |
+| 4 | Target app or pid not found, or the window capture failed (grant Screen Recording) |
 | 5 | Selector matched nothing, or an element has no frame |
 | 6 | Selector matched more than one element |
 
@@ -309,6 +341,12 @@ as the result, or wrap the call and check for `failed`.
   `screencapture`, not a window-relative space.
 - **`--all` is large.** Use a selector or the default actionable filter unless the full tree
   is the point.
+- **`click` refuses points outside the target window.** It checks the point against the
+  target's on-screen window bounds and prints `refused: point outside the target window`
+  instead of clicking into whatever overlaps that spot. It also refuses clicks near the
+  screen top, where the menu bar is.
+- **A walk can stop early.** After `--max-nodes` or a slow walk (> 3s, noted on stderr),
+  re-run with a higher limit or `--timeout` before trusting a negative result.
 - **Retina does not change coordinates.** AX frames and mouse events are in points. Screenshot
   pixels are not.
 - **TCC prompts appear once per caller.** A headless runner without a GUI session and the
